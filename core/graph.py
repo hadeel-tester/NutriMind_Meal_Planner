@@ -225,6 +225,7 @@ meal_agent = _builder.compile()
 
 if __name__ == "__main__":
     print("Running smoke-test invocation...\n")
+    _smoke_user_id = "test_user_001"
     result = meal_agent.invoke(
         {
             "messages": [
@@ -236,7 +237,7 @@ if __name__ == "__main__":
                     )
                 )
             ],
-            "user_id": "test_user_001",
+            "user_id": _smoke_user_id,
             "user_profile": {
                 "age": 30,
                 "health_goals": "weight loss",
@@ -249,7 +250,11 @@ if __name__ == "__main__":
             "current_step": "start",
             "error": None,
         },
-        config={"recursion_limit": MAX_ITERATIONS},
+        config={
+            "recursion_limit": MAX_ITERATIONS,
+            "run_name": "meal_plan_generation",
+            "metadata": {"user_id": _smoke_user_id, "sprint": "sprint3"},
+        },
     )
 
     print("=== Messages ===")
