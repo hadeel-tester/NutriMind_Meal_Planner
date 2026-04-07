@@ -1,15 +1,16 @@
 """LangGraph meal planning agent.
 
 Graph flow:
-    START → load_profile → agent → tools (if tool call) → agent → ...
-                                 → END  (if no tool call)
+    START -> load_profile -> agent <-> tools -> format_output -> END
 
 Nodes:
-    load_profile  — reads user_id from state, injects profile before the ReAct loop
-    agent         — ReAct reasoning step; calls LLM with bound tools
-    tools         — executes whichever tool the agent selected (ToolNode)
+    load_profile   - reads user_id from state, injects profile before the ReAct loop
+    agent          - ReAct reasoning step; calls LLM with bound tools
+    tools          - executes whichever tool the agent selected (ToolNode with retry)
+    format_output  - extracts structured meal_plan and shopping_list from agent response
 """
 
+import json
 import os
 import sys
 
@@ -20,43 +21,29 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
+from langgraph.types import RetryPolicy
 
 from core.state import AgentState
 from core.memory import init_db, load_profile as db_load_profile
-from prompts.system_prompts import MEAL_PLANNER_SYSTEM_PROMPT
+from prompts.system_prompts import MEAL_PLANNER_SYSTEM_PROMPT, FORMAT_OUTPUT_PROMPT
+from tools.nutrition_lookup import lookup_nutrition
+from tools.allergen_checker import check_allergens
+from tools.health_scorer import score_meal_health
+from tools.rag_validator import validate_meal_safety
 
 load_dotenv()
 init_db()
 
+# CAPSTONE: Add supervisor agent to orchestrate meal planner + supplement + check-in agents
+
 # ---------------------------------------------------------------------------
-# Dummy tool — replaced by real tools in Prompt 3–6
+# Tools
 # ---------------------------------------------------------------------------
 
-@tool
-def get_nutrition(food_name: str) -> str:
-    """Get nutrition macros for a food item. Returns calories, protein, carbs, and fat per 100g.
-
-    Use this tool whenever you need nutrition data for a specific food before
-    including it in a meal plan. Never guess nutrition values.
-
-    Args:
-        food_name: Name of the food item (e.g. 'chicken breast', 'brown rice').
-
-    Returns:
-        A string with calorie and macro information per 100g.
-    """
-    return (
-        f"Nutrition for '{food_name}' (placeholder data): "
-        "200 kcal, 10 g protein, 25 g carbs, 5 g fat per 100 g. "
-        "This will be replaced by real CIQUAL lookup in Prompt 3."
-    )
-
-
-_TOOLS = [get_nutrition]
+_TOOLS = [lookup_nutrition, check_allergens, score_meal_health, validate_meal_safety]
 
 # ---------------------------------------------------------------------------
 # LLM
@@ -64,6 +51,13 @@ _TOOLS = [get_nutrition]
 
 _llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 _llm_with_tools = _llm.bind_tools(_TOOLS)
+
+# ---------------------------------------------------------------------------
+# Retry policy & iteration limit
+# ---------------------------------------------------------------------------
+
+_RETRY_POLICY = RetryPolicy(max_attempts=3)  # initial attempt + 2 retries
+MAX_ITERATIONS = 50  # headroom for 4 tools x multiple meals; prevents infinite loops
 
 # ---------------------------------------------------------------------------
 # Nodes
@@ -132,16 +126,54 @@ def agent(state: AgentState) -> dict:
     return {"messages": [response]}
 
 
+def format_output(state: AgentState) -> dict:
+    """Post-processing node: extract structured meal_plan and shopping_list.
+
+    Runs once after the ReAct loop ends (no more tool calls). Uses a dedicated
+    FORMAT_OUTPUT_PROMPT to instruct the LLM to parse the agent's final message
+    into JSON, then writes the result into state.
+    """
+    last_message = state["messages"][-1]
+    agent_response = last_message.content
+
+    if not agent_response:
+        return {"error": "Agent produced no final response to format."}
+
+    prompt = FORMAT_OUTPUT_PROMPT.format(agent_response=agent_response)
+
+    try:
+        response = _llm.invoke(prompt)
+        raw = response.content.strip()
+        # Strip markdown fences if the LLM wraps the JSON
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+            if raw.endswith("```"):
+                raw = raw[:-3]
+            raw = raw.strip()
+
+        parsed = json.loads(raw)
+        return {
+            "meal_plan": parsed.get("meal_plan", {}),
+            "shopping_list": parsed.get("shopping_list", []),
+            "current_step": "done",
+        }
+    except (json.JSONDecodeError, Exception) as exc:
+        return {
+            "error": f"Failed to parse structured output: {exc}",
+            "current_step": "done",
+        }
+
+
 # ---------------------------------------------------------------------------
 # Routing
 # ---------------------------------------------------------------------------
 
 def should_continue(state: AgentState) -> str:
-    """Route to tools if the last message has tool calls, otherwise end."""
+    """Route to tools if the last message has tool calls, otherwise format output."""
     last_message = state["messages"][-1]
     if getattr(last_message, "tool_calls", None):
         return "tools"
-    return END
+    return "format_output"
 
 
 # ---------------------------------------------------------------------------
@@ -152,12 +184,18 @@ _builder = StateGraph(AgentState)
 
 _builder.add_node("load_profile", load_profile)
 _builder.add_node("agent", agent)
-_builder.add_node("tools", ToolNode(_TOOLS))
+_builder.add_node("tools", ToolNode(_TOOLS), retry_policy=_RETRY_POLICY)
+_builder.add_node("format_output", format_output)
 
 _builder.add_edge(START, "load_profile")
 _builder.add_edge("load_profile", "agent")
-_builder.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
+_builder.add_conditional_edges(
+    "agent",
+    should_continue,
+    {"tools": "tools", "format_output": "format_output"},
+)
 _builder.add_edge("tools", "agent")
+_builder.add_edge("format_output", END)
 
 meal_agent = _builder.compile()
 
@@ -169,17 +207,42 @@ if __name__ == "__main__":
     print("Running smoke-test invocation...\n")
     result = meal_agent.invoke(
         {
-            "messages": [HumanMessage(content="Create a simple meal plan for today")],
+            "messages": [
+                HumanMessage(
+                    content=(
+                        "I'm 30 years old with a weight loss goal. "
+                        "My daily calorie target is 1800 kcal and I have a gluten allergy. "
+                        "Please plan 3 days of meals (breakfast, lunch, dinner each day)."
+                    )
+                )
+            ],
             "user_id": "test_user_001",
-            "user_profile": {},
+            "user_profile": {
+                "age": 30,
+                "health_goals": "weight loss",
+                "calorie_target": 1800,
+                "allergies": ["gluten"],
+                "dietary_restrictions": [],
+            },
             "meal_plan": {},
             "shopping_list": [],
             "current_step": "start",
             "error": None,
-        }
+        },
+        config={"recursion_limit": MAX_ITERATIONS},
     )
 
+    print("=== Messages ===")
     for msg in result["messages"]:
         label = type(msg).__name__
         content = msg.content if msg.content else f"[tool_calls: {msg.tool_calls}]"
-        print(f"{label}: {content}\n")
+        text = str(content)
+        print(f"{label}: {text[:200]}...\n" if len(text) > 200 else f"{label}: {text}\n")
+
+    print("=== Structured Output ===")
+    meal_plan = result.get("meal_plan", {})
+    shopping = result.get("shopping_list", [])
+    print(f"Meal plan keys: {list(meal_plan.keys())}")
+    print(f"Shopping list ({len(shopping)} items): {shopping[:10]}...")
+    if result.get("error"):
+        print(f"Error: {result['error']}")

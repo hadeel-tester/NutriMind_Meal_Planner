@@ -10,6 +10,23 @@ from langchain_core.tools import tool
 _CSV_PATH = Path(__file__).parent.parent / "data" / "ciqual" / "ciqual_cleaned.csv"
 _df: pd.DataFrame = pd.read_csv(_CSV_PATH, dtype={"alim_code": str})
 
+COMMON_NAME_MAPPINGS: dict[str, str] = {
+    "brown rice": "rice wholegrain",
+    "whole wheat bread": "bread wholemeal",
+    "whole grain bread": "bread wholemeal",
+    "olive oil": "olive oil",
+    "greek yogurt": "yogurt greek",
+    "ground beef": "beef minced",
+    "chicken breast": "Chicken, breast, without skin, raw",
+    "whole milk": "milk whole",
+    "skim milk": "milk skimmed",
+    "sweet potato": "sweet potato",
+    "peanut butter": "peanut butter",
+    "oats": "oat flakes",
+    "cream cheese": "cheese cream",
+    "cottage cheese": "cheese cottage",
+}
+
 
 def _fmt(value, unit: str) -> str:
     """Format a nutritional value, returning 'unknown' for NaN."""
@@ -116,6 +133,8 @@ def lookup_nutrition(ingredient: str, amount_grams: float) -> str:
         return "Error: ingredient name cannot be empty."
     if amount_grams <= 0:
         return "Error: amount_grams must be greater than 0."
+
+    ingredient = COMMON_NAME_MAPPINGS.get(ingredient.strip().lower(), ingredient)
 
     words = ingredient.strip().lower().split()
     names_lower = _df["food_name_en"].str.lower()
