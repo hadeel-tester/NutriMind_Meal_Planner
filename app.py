@@ -92,6 +92,14 @@ with st.sidebar.form("profile_form"):
         step=1,
         value=int(_prefill.get("age") or 25),
     )
+    _sex_options = ["Male", "Female", "Prefer not to say"]
+    _sex_prefill = _prefill.get("sex") or "Prefer not to say"
+    sex = st.radio(
+        "Biological sex",
+        options=_sex_options,
+        index=_sex_options.index(_sex_prefill) if _sex_prefill in _sex_options else 2,
+        horizontal=True,
+    )
     weight_kg = st.number_input(
         "Weight (kg)",
         min_value=20.0,
@@ -136,6 +144,7 @@ if submitted:
         {
             "name": name,
             "age": age,
+            "sex": sex,
             "weight_kg": weight_kg,
             "height_cm": height_cm,
             "calorie_target": calorie_target,

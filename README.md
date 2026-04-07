@@ -153,15 +153,9 @@ LANGCHAIN_PROJECT=meal-planning-agent-sprint3
 MEMORY_DB_PATH=data/user_profiles.db
 ```
 
-**5. Add the CIQUAL data**
+**5. CIQUAL nutritional data**
 
-Download the CIQUAL 2025 table from [ciqual.anses.fr](https://ciqual.anses.fr/) (Excel format).  
-Place the cleaned CSV at:
-```
-data/ciqual/ciqual_cleaned.csv
-```
-
-The CSV must have these columns: `alim_code`, `food_name_en`, `food_group`, `calories_per_100g`, `protein_g`, `carbs_g`, `fat_g`, `fiber_g`.
+Already included in the repository at `data/ciqual/ciqual_cleaned.csv` — no action needed.
 
 **6. Add the ChromaDB knowledge base (Sprint 2)**
 
