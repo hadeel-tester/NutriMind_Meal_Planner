@@ -13,6 +13,7 @@ Nodes:
 import json
 import os
 import sys
+import time
 
 # Ensure project root is on sys.path when this file is run directly
 # (e.g. `python core/graph.py`). Has no effect when imported as a module.
@@ -22,6 +23,7 @@ from dotenv import load_dotenv
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
+from openai import RateLimitError
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from langgraph.types import RetryPolicy
@@ -36,6 +38,17 @@ from tools.rag_validator import validate_meal_safety
 
 load_dotenv()
 init_db()
+
+# ---------------------------------------------------------------------------
+# LangSmith tracing status
+# ---------------------------------------------------------------------------
+
+_TRACING_ENABLED = os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true"
+_LANGSMITH_PROJECT = os.getenv("LANGCHAIN_PROJECT", "not set")
+if _TRACING_ENABLED:
+    print(f"[LangSmith] Tracing ENABLED — project: {_LANGSMITH_PROJECT}")
+else:
+    print("[LangSmith] Tracing DISABLED — set LANGCHAIN_TRACING_V2=true to enable")
 
 # CAPSTONE: Add supervisor agent to orchestrate meal planner + supplement + check-in agents
 
@@ -57,7 +70,7 @@ _llm_with_tools = _llm.bind_tools(_TOOLS)
 # ---------------------------------------------------------------------------
 
 _RETRY_POLICY = RetryPolicy(max_attempts=3)  # initial attempt + 2 retries
-MAX_ITERATIONS = 50  # headroom for 4 tools x multiple meals; prevents infinite loops
+MAX_ITERATIONS = 80  # headroom for 4 tools x multiple meals; prevents infinite loops
 
 # ---------------------------------------------------------------------------
 # Nodes
@@ -122,8 +135,15 @@ def agent(state: AgentState) -> dict:
         content=f"{MEAL_PLANNER_SYSTEM_PROMPT}\n\n## User health profile\n{profile_text}"
     )
     messages = [system_msg] + list(state["messages"])
-    response = _llm_with_tools.invoke(messages)
-    return {"messages": [response]}
+    for attempt in range(3):
+        try:
+            response = _llm_with_tools.invoke(messages)
+            return {"messages": [response]}
+        except RateLimitError:
+            if attempt < 2:
+                time.sleep(2)
+                continue
+            raise
 
 
 def format_output(state: AgentState) -> dict:
@@ -212,7 +232,7 @@ if __name__ == "__main__":
                     content=(
                         "I'm 30 years old with a weight loss goal. "
                         "My daily calorie target is 1800 kcal and I have a gluten allergy. "
-                        "Please plan 3 days of meals (breakfast, lunch, dinner each day)."
+                        "Please plan 1 day of meals (breakfast, lunch, dinner)."
                     )
                 )
             ],
