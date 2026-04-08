@@ -6,6 +6,7 @@ user_profiles
   user_id              TEXT PRIMARY KEY
   name                 TEXT
   age                  INTEGER
+  sex                  TEXT
   weight_kg            REAL
   height_cm            REAL
   health_goals         TEXT  (JSON list/string)
@@ -33,6 +34,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     user_id              TEXT PRIMARY KEY,
     name                 TEXT,
     age                  INTEGER,
+    sex                  TEXT,
     weight_kg            REAL,
     height_cm            REAL,
     health_goals         TEXT,
@@ -66,6 +68,10 @@ def init_db() -> None:
     os.makedirs(os.path.dirname(db_path) if os.path.dirname(db_path) else ".", exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.execute(_CREATE_TABLE_SQL)
+        # Migrate existing DBs that predate the sex column
+        existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(user_profiles)")}
+        if "sex" not in existing_cols:
+            conn.execute("ALTER TABLE user_profiles ADD COLUMN sex TEXT")
         conn.commit()
 
 
@@ -101,15 +107,16 @@ def save_profile(user_id: str, profile: dict) -> None:
         conn.execute(
             """
             INSERT OR REPLACE INTO user_profiles
-                (user_id, name, age, weight_kg, height_cm,
+                (user_id, name, age, sex, weight_kg, height_cm,
                  health_goals, dietary_restrictions, allergies,
                  calorie_target, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
                 serialised.get("name"),
                 serialised.get("age"),
+                serialised.get("sex"),
                 serialised.get("weight_kg"),
                 serialised.get("height_cm"),
                 serialised.get("health_goals"),
