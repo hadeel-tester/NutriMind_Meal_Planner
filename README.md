@@ -3,6 +3,8 @@
 **Phase 1 of the NutriMind AI Wellness Coach platform.**  
 A personalised meal planning agent built with LangGraph, backed by real nutritional data, and designed to grow into a full multi-agent wellness system in the Capstone sprint.
 
+**Live demo:** https://nutri-mind-meal-planner.streamlit.app
+
 ---
 
 ## Table of Contents
@@ -40,6 +42,17 @@ This project is deliberately scoped as Phase 1. The architecture is designed so 
 
 ---
 
+## Screenshots
+
+### Health Profile & Meal Plan
+![Sidebar](docs/screenshots/Streamlit_sidebar.png)
+![Meal Plan](docs/screenshots/meal_plan.png)
+
+### LangSmith Trace — Agent Tool-Calling
+![LangSmith Trace](docs/screenshots/langsmith_trace.png)
+
+---
+
 ## 2. Architecture
 
 ```
@@ -62,7 +75,7 @@ MealPlanningAgent — LangGraph ReAct loop
   ├── lookup_nutrition         CIQUAL 2025 CSV via pandas (3,484 foods)
   ├── score_meal_health        1–10 score against calorie target & health goals
   └── validate_meal_safety     ChromaDB knowledge base (Sprint 2 asset)
-                                 └── query translation (MultiQuery)
+                                 └── query translation
                                        └── 2-3 LLM-generated search phrasings
   │
   ▼
@@ -320,6 +333,9 @@ The `ToolNode` is configured with `RetryPolicy(max_attempts=3)`, retrying failed
 
 ### Hard: LangSmith observability
 LangSmith is auto-instrumented via environment variables. Every run is tagged with `run_name="meal_plan_generation"` and `metadata={"user_id": ..., "sprint": "sprint3"}` for easy filtering in the dashboard. A startup check prints whether tracing is enabled or disabled.
+
+### Hard: Cloud deployment
+The app is deployed and publicly accessible on Streamlit Community Cloud at **https://nutri-mind-meal-planner.streamlit.app**. Streamlit Cloud hosts on managed cloud infrastructure with automatic HTTPS and horizontal scaling — no server management required. Known limitation: the app cold-starts after a period of inactivity; an always-on deployment (e.g. GCP Cloud Run) is planned for the Capstone production release.
 
 ---
 
