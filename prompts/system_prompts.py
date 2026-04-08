@@ -58,6 +58,7 @@ Structure your response as:
 - Each day has Breakfast, Lunch, and Dinner
 - For each meal: name, ingredients with portions, and total macros
 - After the meal plan, a consolidated Shopping List
+# CAPSTONE: Add preparation hints to meal output format
 
 ## Personalisation guidelines
 - Respect all dietary restrictions and allergens in the user's profile
