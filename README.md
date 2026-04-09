@@ -305,7 +305,7 @@ LangSmith auto-instruments LangGraph with zero code changes — just two environ
 
 | Requirement | Implementation |
 |------------|---------------|
-| Define a clear agent purpose | Personalised meal planning with nutritional validation — documented in this README and in `CLAUDE.md` |
+| Define a clear agent purpose | Personalised meal planning with nutritional validation — documented in this README |
 | Core functionality | ReAct agent plans meals, validates against profile, returns structured meal plan + shopping list |
 | User interface | Streamlit app (`app.py`) — sidebar profile form, two-tab layout, spinner feedback |
 | Appropriate tools and libraries | LangGraph, LangChain, OpenAI, ChromaDB, pandas, Streamlit, SQLite, LangSmith |
@@ -320,7 +320,7 @@ LangSmith auto-instruments LangGraph with zero code changes — just two environ
 ## 7. Optional Tasks Implemented
 
 ### Medium: Long-term memory (SQLite user profiles)
-`core/memory.py` persists user health profiles across sessions. The `load_profile` graph node automatically injects the profile before the ReAct loop on every invocation. Profile fields: name, age, weight, height, calorie target, health goals, dietary restrictions, allergies.
+`core/memory.py` persists user health profiles across sessions. The `load_profile` graph node automatically injects the profile before the ReAct loop on every invocation. Profile fields: name, age, biological sex, weight, height, calorie target, health goals, dietary restrictions, allergies.
 
 ### Medium: External data tool (CIQUAL pandas lookup)
 `tools/nutrition_lookup.py` queries the CIQUAL 2025 CSV (3,484 foods) using pandas substring matching with difflib fuzzy fallback. Returns exact, portion-scaled macros from an authoritative external dataset.
@@ -335,7 +335,7 @@ The `ToolNode` is configured with `RetryPolicy(max_attempts=3)`, retrying failed
 LangSmith is auto-instrumented via environment variables. Every run is tagged with `run_name="meal_plan_generation"` and `metadata={"user_id": ..., "sprint": "sprint3"}` for easy filtering in the dashboard. A startup check prints whether tracing is enabled or disabled.
 
 ### Hard: Cloud deployment
-The app is deployed and publicly accessible on Streamlit Community Cloud at **https://nutri-mind-meal-planner.streamlit.app**. Streamlit Cloud hosts on managed cloud infrastructure with automatic HTTPS and horizontal scaling — no server management required. Known limitation: the app cold-starts after a period of inactivity; an always-on deployment (e.g. GCP Cloud Run) is planned for the Capstone production release.
+The app is deployed and publicly accessible on Streamlit Community Cloud at **https://nutri-mind-meal-planner.streamlit.app**. Streamlit Cloud hosts on managed cloud infrastructure with automatic HTTPS and horizontal scaling — no server management required. Known limitation: the app cold-starts after a period of inactivity; an always-on deployment on AWS is planned for the Capstone production release.
 
 ---
 
@@ -367,8 +367,9 @@ This project is Phase 1 of the NutriMind AI Wellness Coach. The following will b
 | **Weekly check-in agent** | Tracks meal adherence over sessions; adjusts future plans based on feedback |
 | **Multi-agent orchestration** | LangGraph supervisor routing between meal planner, supplement advisor, and check-in agents |
 | **FastAPI backend** | Wraps `core/` in a REST API; enables the Flutter mobile frontend |
-| **Flutter mobile UI** | Production-quality cross-platform app replacing the Streamlit prototype |
+| **Flutter mobile UI** | Production-quality web or mobile frontend replacing the Streamlit prototype (framework TBD) |
 | **Open Food Facts integration** | Adds product barcode lookup for branded/packaged food validation |
+| **Cloud deployment** | AWS deployment (EC2 or Elastic Beanstalk) for production hosting |
 | **User authentication** | Multi-user support replacing the hardcoded `default_user` |
 | **Progress tracking** | Persistent tracking of weight, calorie adherence, and goal progress over weeks |
 
@@ -420,8 +421,7 @@ NutriMind_Meal_Planner/
 │   ├── test_tools.py           # 8 unit tests (no API key required)
 │   └── test_e2e.py             # Full agent invocation test
 ├── .env.example                # Environment variable template
-├── requirements.txt
-└── CLAUDE.md                   # Claude Code project instructions
+└── requirements.txt
 ```
 
 ---
