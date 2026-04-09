@@ -144,6 +144,8 @@ def agent(state: AgentState) -> dict:
                 time.sleep(2)
                 continue
             raise
+    # Unreachable: loop always returns or raises, but satisfies type checker
+    raise RuntimeError("agent() exited retry loop without returning")
 
 
 def format_output(state: AgentState) -> dict:
@@ -163,7 +165,10 @@ def format_output(state: AgentState) -> dict:
 
     try:
         response = _llm.invoke(prompt)
-        raw = response.content.strip()
+        content = response.content
+        # ChatOpenAI normally returns str, but BaseMessage.content can be list[...]
+        raw = content if isinstance(content, str) else str(content)
+        raw = raw.strip()
         # Strip markdown fences if the LLM wraps the JSON
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
